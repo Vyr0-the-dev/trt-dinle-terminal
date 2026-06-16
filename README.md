@@ -17,13 +17,7 @@
 
 ## Tanıtım Videosu
 
-Aşağıdaki video proje paketinin içindedir:
-
-<video src="src/TRTDinleExplainer.mp4" controls width="860"></video>
-
-Video README görüntüleyicinizde açılmazsa buradan izleyin / indirin:
-
-[TRT Dinle tanıtım videosu](src/TRTDinleExplainer.mp4)
+https://github.com/user-attachments/assets/1b268d50-029b-42e2-83b9-5b7a2679a36e
 
 ---
 
