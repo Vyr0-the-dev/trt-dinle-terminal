@@ -26,7 +26,6 @@ https://github.com/user-attachments/assets/1b268d50-029b-42e2-83b9-5b7a2679a36e
 - **TRT Dinle içerikleri**: Müzik, radyo tiyatrosu, sesli kitap, podcast ve canlı radyo içeriklerine terminalden erişim.
 - **Modern TUI arayüzü**: Textual ile klavye odaklı, hızlı ve temiz terminal deneyimi.
 - **Sütunlu listeler**: `No · Başlık · Sanatçı · Süre` düzeninde okunabilir içerik listeleri.
-- **Kalıcı nowbar**: Çalan içeriği alt dock alanında sürekli gösterir.
 - **Tam oynatıcı ekranı**: Progress bar, spectrum, volume, shuffle, repeat, queue ve favori kontrolleri.
 - **Animasyonlu spectrum**: Terminal içinde canlı ses görselleştirme.
 - **Favoriler**: Beğenilen içerikleri yerel olarak kaydeder.
