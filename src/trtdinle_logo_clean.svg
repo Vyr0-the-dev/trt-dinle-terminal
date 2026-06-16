@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">TRT Dinle Terminal Logo</title>
+  <desc id="desc">Clean terminal audio app mark: rounded terminal window, play prompt and subtle audio bars.</desc>
+  <defs>
+    <linearGradient id="bg" x1="180" y1="100" x2="860" y2="930" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#171B24"/>
+      <stop offset="1" stop-color="#0C0E14"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="270" y1="260" x2="750" y2="760" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFD166"/>
+      <stop offset="1" stop-color="#E8A838"/>
+    </linearGradient>
+    <linearGradient id="mint" x1="330" y1="300" x2="720" y2="780" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#68F4CD"/>
+      <stop offset="1" stop-color="#38D9A9"/>
+    </linearGradient>
+    <filter id="shadow" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="22" stdDeviation="24" flood-color="#000" flood-opacity="0.34"/>
+    </filter>
+  </defs>
+
+  <rect x="64" y="64" width="896" height="896" rx="220" fill="url(#bg)"/>
+  <rect x="190" y="242" width="644" height="540" rx="72" fill="#11161F" stroke="#2A313D" stroke-width="24" filter="url(#shadow)"/>
+  <path d="M190 333h644" stroke="#2A313D" stroke-width="24"/>
+  <circle cx="276" cy="288" r="18" fill="#FF6B6B"/>
+  <circle cx="336" cy="288" r="18" fill="#FFD166"/>
+  <circle cx="396" cy="288" r="18" fill="#38D9A9"/>
+
+  <path d="M304 484l82 64-82 64" fill="none" stroke="url(#mint)" stroke-width="48" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="428" y="586" width="184" height="38" rx="19" fill="url(#accent)"/>
+
+  <g transform="translate(638 438)">
+    <rect x="0" y="118" width="34" height="96" rx="17" fill="url(#mint)"/>
+    <rect x="58" y="70" width="34" height="144" rx="17" fill="url(#accent)"/>
+    <rect x="116" y="24" width="34" height="190" rx="17" fill="url(#mint)"/>
+  </g>
+
+  <path d="M320 708h384" stroke="#2A313D" stroke-width="28" stroke-linecap="round"/>
+  <path d="M320 708h174" stroke="url(#accent)" stroke-width="28" stroke-linecap="round"/>
+</svg>

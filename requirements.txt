@@ -1,0 +1,7 @@
+requests
+fake-useragent
+tgCrypto
+yt-dlp
+bs4
+textual
+python-mpv
