@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="src/trtdinle_logo_clean.svg" width="132" alt="TRT Dinle Terminal Player Logo">
+  <img src="src/trtdinle_logo_clean.svg" width="164" alt="TRT Dinle Terminal Player Logo">
 </p>
 
 <h1 align="center">TRT Dinle Terminal Player</h1>
@@ -18,18 +18,6 @@
 ## Tanıtım Videosu
 
 https://github.com/user-attachments/assets/1b268d50-029b-42e2-83b9-5b7a2679a36e
-
----
-
-## Logo
-
-<p align="center">
-  <img src="src/trtdinle_logo_clean.svg" width="220" alt="TRT Dinle Logo">
-</p>
-
-Logo dosyası:
-
-[`src/trtdinle_logo_clean.svg`](src/trtdinle_logo_clean.svg)
 
 ---
 
@@ -144,7 +132,7 @@ cd trt_dinle
 Git ile kullanıyorsanız:
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/Vyr0-the-dev/trt-dinle-terminal
 cd trt_dinle
 ```
 
