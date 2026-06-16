@@ -5,8 +5,7 @@
 <h1 align="center">TRT Dinle Terminal Player</h1>
 
 <p align="center">
-  TRT Dinle için modern, terminal tabanlı müzik / radyo / podcast / sesli kitap oynatıcısı.<br>
-  <code>cmus</code> ve <code>ncmpcpp</code> çizgisinde, klavye odaklı bir TUI deneyimi.
+  TRT Dinle için modern, terminal tabanlı müzik / radyo / podcast / sesli kitap oynatıcısı. Klavye odaklı bir TUI deneyimi.
 </p>
 
 <p align="center">
