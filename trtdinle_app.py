@@ -15,7 +15,77 @@ from urllib.parse import urljoin, urlparse
 
 os.environ["PATH"] = os.path.dirname(os.path.abspath(__file__)) + os.pathsep + os.environ.get("PATH", "")
 
-import mpv, requests
+import requests
+from bs4 import BeautifulSoup
+
+try:
+    import mpv
+    MPV_AVAILABLE = True
+except Exception:
+    mpv = None
+    MPV_AVAILABLE = False
+
+class MockMPV:
+    def __init__(self, **kwargs):
+        self.volume = 85
+        self.playback_time = 0.0
+        self.duration = 0.0
+        self.pause = True
+        self.mute = False
+        self._thread = None
+        self._running = True
+        self._ended_callback = None
+        threading.Thread(target=self._tick_loop, daemon=True).start()
+
+    def _tick_loop(self):
+        while self._running:
+            time.sleep(0.5)
+            if not self.pause and self.duration > 0:
+                self.playback_time = min(self.duration, self.playback_time + 0.5)
+                if self.playback_time >= self.duration:
+                    self.pause = True
+                    if self._ended_callback:
+                        try:
+                            # Mimic the mpv Event structure
+                            class MockEvent:
+                                def __init__(self):
+                                    self.reason = "eof"
+                            self._ended_callback(MockEvent())
+                        except Exception:
+                            pass
+
+    def command(self, cmd, *args):
+        if cmd == "loadfile":
+            self.playback_time = 0.0
+            self.duration = 180.0  # Simulated duration of 3 minutes
+            self.pause = False
+        elif cmd == "stop":
+            self.playback_time = 0.0
+            self.duration = 0.0
+            self.pause = True
+
+    def seek(self, secs, reference="relative"):
+        if reference == "relative":
+            self.playback_time = max(0.0, min(self.duration, self.playback_time + secs))
+
+    def event_callback(self, name):
+        def decorator(func):
+            if name == "end_file":
+                self._ended_callback = func
+            return func
+        return decorator
+
+    def terminate(self):
+        self._running = False
+
+    def __setitem__(self, key, value):
+        if key == "volume":
+            self.volume = value
+
+    def __getitem__(self, key):
+        if key == "volume":
+            return self.volume
+        return None
 from bs4 import BeautifulSoup
 
 from textual import on, work
@@ -110,6 +180,16 @@ def norm_name(s):
     s = re.sub(r"[^\w\s]", " ", s)
     return re.sub(r"\s+", " ", s).strip()
 
+def turkish_fold(s):
+    if not s: return ""
+    m = {
+        "I": "ı", "İ": "i", "Ş": "ş", "Ç": "ç", "Ğ": "ğ", "Ö": "ö", "Ü": "ü",
+        "Â": "a", "Î": "i", "Û": "u",
+        "ı": "ı", "i": "i", "ş": "ş", "ç": "ç", "ğ": "ğ", "ö": "ö", "ü": "ü"
+    }
+    s = "".join(m.get(c, c) for c in str(s))
+    return s.lower()
+
 def _parse_dur(value):
     if not value: return 0
     s = str(value)
@@ -139,18 +219,32 @@ def save_json(path, data):
     try: path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     except Exception: pass
 
-def load_history(): return load_json(HISTORY_FILE, [])
+_HISTORY_CACHE = None
+_FAVORITES_CACHE = None
+
+def load_history():
+    global _HISTORY_CACHE
+    if _HISTORY_CACHE is None:
+        _HISTORY_CACHE = load_json(HISTORY_FILE, [])
+    return _HISTORY_CACHE
 
 def add_to_history(url, title):
     url = normalize_url(url)
     history = [h for h in load_history() if h.get("url") != url]
     history.insert(0, {"url": url, "title": clean_title(title), "ts": time.time()})
-    save_json(HISTORY_FILE, history[:50])
+    global _HISTORY_CACHE
+    _HISTORY_CACHE = history[:50]
+    save_json(HISTORY_FILE, _HISTORY_CACHE)
 
 def load_favorites():
-    return load_json(FAVORITES_FILE, {})
+    global _FAVORITES_CACHE
+    if _FAVORITES_CACHE is None:
+        _FAVORITES_CACHE = load_json(FAVORITES_FILE, {})
+    return _FAVORITES_CACHE
 
 def save_favorites(data):
+    global _FAVORITES_CACHE
+    _FAVORITES_CACHE = data
     save_json(FAVORITES_FILE, data)
 
 def is_favorite(ep):
@@ -688,10 +782,114 @@ def parse_page(soup, url):
         if tracks or items: return tracks, items
     return extract_audio(soup), extract_listing(soup, url)
 
+def load_search_page(url, keyword):
+    import requests
+    api_url = f"https://www.trtdinle.com/api/search?keyword={requests.utils.quote(keyword)}&limit=100&type=all"
+    r = SESSION.get(api_url, timeout=(3, 8))
+    r.raise_for_status()
+    data = r.json()
+
+    tracks = []
+    if "song" in data:
+        for s in data["song"]:
+            title = s.get("title", "")
+
+            # Handle artist as list or dict
+            artist_obj = s.get("artist") or []
+            artist_name = ""
+            if isinstance(artist_obj, list):
+                artist_name = ", ".join(a.get("title", "") for a in artist_obj if isinstance(a, dict) and a.get("title"))
+            elif isinstance(artist_obj, dict):
+                artist_name = artist_obj.get("title") or ""
+            elif isinstance(artist_obj, str):
+                artist_name = artist_obj
+
+            # Audio and duration
+            audio_obj = s.get("audio") or {}
+            stream_url = ""
+            download_url = ""
+            duration = 0
+            if isinstance(audio_obj, dict):
+                stream_url = audio_obj.get("url") or ""
+                download_url = audio_obj.get("downloadUrl") or stream_url
+                duration = audio_obj.get("duration") or 0
+
+            if not stream_url:
+                stream_url = s.get("streamUrl") or s.get("downloadUrl") or ""
+                download_url = s.get("downloadUrl") or stream_url
+                duration = s.get("duration") or 0
+
+            stream_url = normalize_url(stream_url)
+            download_url = normalize_url(download_url)
+
+            tracks.append({
+                "title": clean_title(title),
+                "artist": clean_title(artist_name, "") if artist_name else "",
+                "duration": _parse_dur(duration),
+                "stream_url": stream_url,
+                "download_url": download_url,
+                "url": normalize_url(s.get("path") or ""),
+                "cover": s.get("imageUrl") or s.get("featuredImage") or ""
+            })
+
+    groups = []
+    group_mappings = [
+        ("artist", "👤 Sanatçılar"),
+        ("album", "💿 Albümler"),
+        ("playlist", "🎵 Çalma Listeleri"),
+        ("podcast", "🎙 Podcastler"),
+        ("seslikitap", "📚 Sesli Kitaplar"),
+        ("radyotiyatrosu", "📻 Radyo Tiyatrosu"),
+        ("episode", "📻 Programlar/Bölümler")
+    ]
+
+    for api_key, label in group_mappings:
+        items_list = data.get(api_key) or []
+        if items_list:
+            group_items = []
+            for it in items_list:
+                title = it.get("title") or ""
+                path = it.get("path") or ""
+                if title and path:
+                    group_items.append({
+                        "title": clean_title(title),
+                        "url": normalize_url(path),
+                        "type": api_key
+                    })
+            if group_items:
+                groups.append({
+                    "key": api_key,
+                    "label": label,
+                    "items": group_items
+                })
+
+    result = {
+        "kind": "collection",
+        "url": url,
+        "title": f"Arama: {keyword}",
+        "seg": "search",
+        "tracks": tracks,
+        "groups": groups,
+        "cover": None
+    }
+
+    cache_set(url, result)
+    return result
+
 def load_page(url):
     url = normalize_url(url)
     cached = cache_get(url)
     if cached: return cached
+
+    # Intercept search page queries
+    p = urlparse(url)
+    if "/ara" in p.path and "q=" in p.query:
+        from urllib.parse import parse_qs
+        qs = parse_qs(p.query)
+        q_val = qs.get("q", [""])[0].strip()
+        if q_val:
+            return load_search_page(url, q_val)
+
     soup = fetch_soup(url)
     title = page_title(soup, url)
     cover = page_cover(soup)
@@ -717,6 +915,7 @@ def load_page(url):
 class PlayerEngine:
     def __init__(self):
         self.player = None
+        self.player_fallback = False
         self.queue = []
         self.idx = 0
         self.title = ""
@@ -733,12 +932,22 @@ class PlayerEngine:
 
     def ensure(self):
         if self.player is not None: return self.player
-        self.player = mpv.MPV(
-            vo="null", video=False, ytdl=False,
-            hls_bitrate="max", cache="no",
-            log_handler=lambda *a: None,
-            msg_level="all=no",
-        )
+        if MPV_AVAILABLE and mpv is not None:
+            try:
+                self.player = mpv.MPV(
+                    vo="null", video=False, ytdl=False,
+                    hls_bitrate="max", cache="no",
+                    log_handler=lambda *a: None,
+                    msg_level="all=no",
+                )
+                self.player_fallback = False
+            except Exception:
+                self.player = MockMPV()
+                self.player_fallback = True
+        else:
+            self.player = MockMPV()
+            self.player_fallback = True
+
         try: self.player["volume"] = self.volume
         except Exception: pass
 
@@ -939,18 +1148,46 @@ class Spectrum(Static):
 
     def _markup(self):
         rows = []
-        for row in range(self._h, 0, -1):
-            thr = row / (self._h + 1)
+        for r in range(self._h, 0, -1):
             chunks = []
             i = 0
             while i < self._n:
-                lv = self._levels[i]
-                fill = lv >= thr
-                color = _vis_color(lv) if fill else C_TRACK
-                ch = "█" if fill else "░"
+                # Determine char and color for column i
+                val = self._levels[i] * self._h
+                active = self._active()
+                if val >= r:
+                    ch = "█"
+                    color = _vis_color(self._levels[i]) if active else C_MUTED
+                elif val > r - 1:
+                    frac = val - (r - 1)
+                    idx = int(frac * 8)
+                    ch = VIS_BLOCKS[max(0, min(7, idx))]
+                    color = _vis_color(self._levels[i]) if active else C_MUTED
+                else:
+                    ch = " "
+                    color = C_TRACK
+
+                # Find run of same char and color
                 j = i + 1
-                while j < self._n and (self._levels[j] >= thr) == fill:
-                    j += 1
+                while j < self._n:
+                    val_j = self._levels[j] * self._h
+                    if val_j >= r:
+                        ch_j = "█"
+                        color_j = _vis_color(self._levels[j]) if active else C_MUTED
+                    elif val_j > r - 1:
+                        frac_j = val_j - (r - 1)
+                        idx_j = int(frac_j * 8)
+                        ch_j = VIS_BLOCKS[max(0, min(7, idx_j))]
+                        color_j = _vis_color(self._levels[j]) if active else C_MUTED
+                    else:
+                        ch_j = " "
+                        color_j = C_TRACK
+
+                    if ch_j == ch and color_j == color:
+                        j += 1
+                    else:
+                        break
+
                 chunks.append(f"[{color}]{ch * (j - i)}[/]")
                 i = j
             rows.append("".join(chunks))
@@ -1119,11 +1356,15 @@ class HomeScreen(NowBarMixin, Screen):
             lv.append(ListItem(Label(f"  {label}"), name=item.get("url")))
 
     def _open(self, url):
+        url = url.strip()
         if url == "favorites:":
             favs = load_favorites()
             items = [v for v in favs.values()]
             self.app.push_screen(CollectionScreen({"title": "❤ Favoriler", "tracks": items, "groups": []}))
             return
+        # Auto search term translator
+        if not url.startswith(("http://", "https://", "favorites:")) and not url.startswith("/") and len(url) > 0:
+            url = f"https://www.trtdinle.com/ara?q={url}"
         url = normalize_url(url)
         if url: self.app.push_screen(LoadingScreen(url))
 
@@ -1212,7 +1453,7 @@ class CollectionScreen(NowBarMixin, Screen):
         title_w = max(12, int(rest * 0.60))
         artist_w = max(8, rest - title_w)
 
-        tracks = [(i, ep) for i, ep in enumerate(self.tracks) if not q or q in track_label(ep).lower()]
+        tracks = [(i, ep) for i, ep in enumerate(self.tracks) if not q or q in turkish_fold(track_label(ep))]
         if tracks:
             lv.append(self._hdr(f"  ♫  Parçalar · {len(self.tracks)}"))
             if not q:
@@ -1231,7 +1472,7 @@ class CollectionScreen(NowBarMixin, Screen):
                 total += 1
 
         for g in self.groups:
-            gi = [it for it in g["items"] if not q or q in it["title"].lower()]
+            gi = [it for it in g["items"] if not q or q in turkish_fold(it["title"])]
             if not gi: continue
             lv.append(self._hdr(f"  {g['label']} · {len(g['items'])}"))
             for it in gi[:_MAX_LIST]:
@@ -1333,6 +1574,48 @@ class SleepTimerScreen(Screen):
 
 
 # ================== PLAYER SCREEN ==================
+
+class HelpModalScreen(Screen):
+    CSS = f"""
+    HelpModalScreen {{ align: center middle; background: rgba(0,0,0,0.75); }}
+    #help-box {{ width: 66; height: auto; padding: 1 3; border: double {C_PRIMARY}; background: {C_SURFACE}; }}
+    #help-title {{ text-align: center; text-style: bold; color: {C_PRIMARY}; margin-bottom: 1; }}
+    #help-grid {{ layout: grid; grid-size: 2; grid-gutter: 1; margin: 1 0; }}
+    .help-key {{ text-style: bold; color: {C_ACCENT}; text-align: right; margin-right: 2; }}
+    .help-desc {{ color: {C_TEXT}; }}
+    #help-close {{ margin-top: 1; align-horizontal: center; background: {C_SURFACE}; color: {C_TEXT}; border: tall {C_MUTED}; }}
+    #help-close:focus {{ background: {C_PRIMARY}; color: {C_BG}; border: none; }}
+    """
+
+    def compose(self):
+        with Container(id="help-box"):
+            yield Static("⌨ Klavye Kısayolları", id="help-title")
+            with Container(id="help-grid"):
+                keys = [
+                    ("Boşluk (Space)", "Oynat / Duraklat"),
+                    ("← / →", "10 Saniye Geri / İleri"),
+                    ("↑ / ↓", "Sesi Artır / Azalt"),
+                    ("n", "Sonraki Parça"),
+                    ("b", "Önceki Parça"),
+                    ("l", "Çalma Listesini Göster/Gizle"),
+                    ("s", "Karışık Çalmayı Aç/Kapat"),
+                    ("r", "Tekrar Modunu Değiştir"),
+                    ("m", "Sesi Kapa/Aç (Mute)"),
+                    ("t", "Uyku Zamanlayıcısı"),
+                    ("f", "Favorilere Ekle/Çıkar"),
+                    ("d", "Parçayı Listeden Kaldır"),
+                    ("/", "Listede Ara / Filtrele"),
+                    ("Esc / q", "Önceki Sayfaya Dön"),
+                    ("?", "Bu Yardım Menüsünü Aç"),
+                ]
+                for key, desc in keys:
+                    yield Label(f" {key}", classes="help-key")
+                    yield Label(desc, classes="help-desc")
+            yield Button("Kapat", id="help-close")
+
+    @on(Button.Pressed, "#help-close")
+    def _close(self):
+        self.dismiss()
 
 class PlayerScreen(Screen):
     CSS = f"""
@@ -1459,7 +1742,7 @@ class PlayerScreen(Screen):
         eng = self.app.engine
         ep = eng.current()
         if not ep: return
-        fav = is_favorite(ep.get("url", ""))
+        fav = is_favorite(ep)
         heart = f"[{C_PRIMARY}]♥[/] " if fav else ""
         self._upd("pl-track", f"{heart}[{C_ACCENT}]♪[/]  [b]{esc(ellipsize(track_label(ep), 65))}[/]")
         self._upd("pl-meta",
@@ -1499,7 +1782,7 @@ class PlayerScreen(Screen):
         title_w = int(rem * 0.65)
         artist_w = rem - title_w
         for i, ep in enumerate(eng.queue):
-            if q and q not in track_label(ep).lower():
+            if q and q not in turkish_fold(track_label(ep)):
                 continue
             dur_str = format_duration(ep.get("duration", 0) or 0)
             cur = i == eng.idx
@@ -1690,11 +1973,7 @@ class PlayerScreen(Screen):
         self.app.pop_screen()
 
     def action_show_help(self):
-        self.app.notify(
-            "space oynat/duraklat · ←/→ sar · ↑/↓ ses (liste açıkken listede gezinir) · "
-            "n/b parça · d listeden kaldır · s karışık · r tekrar · m sessiz · t uyku · l liste · f favori",
-            timeout=8,
-        )
+        self.app.push_screen(HelpModalScreen())
 
     def action_focus_side_search(self):
         w = self._w("pl-side-search")
